@@ -1,116 +1,208 @@
-Caching HTTP Proxy
-A lightweight HTTP proxy built with Python, FastAPI, and HTTPX. It forwards incoming HTTP requests to a configured origin server and temporarily stores eligible GET responses in an in-memory cache.
-The project is intended as a learning project for backend concepts such as HTTP request forwarding, middleware-style request handling, caching, cache policies, TTL expiration, and LRU eviction. It is not intended to be a production-ready or internet-facing proxy.
-Features
-Forwards GET, HEAD, POST, PUT, PATCH, DELETE, and OPTIONS requests.
-Caches successful GET responses (200 OK) when the request and response are eligible for caching.
-Returns X-Cache: MISS when a cacheable request is fetched from the origin, X-Cache: HIT when a cached response is returned, and X-Cache: BYPASS when caching is not applicable.
-Supports a configurable default cache TTL and honors an origin response's s-maxage or max-age when present.
-Supports the response Vary header so different request-header variants are not mixed together.
-Uses LRU-style eviction and a configurable maximum number of cached response variants.
-Avoids caching requests containing Authorization or Cookie headers, and avoids caching responses marked private, no-store, or no-cache, responses containing Set-Cookie, non-200 responses, and responses larger than 1 MiB.
-Uses asynchronous HTTP requests and connection pooling through HTTPX.
-Provides a token-protected endpoint and CLI command for clearing the cache of a running proxy.
-Returns 502 Bad Gateway for origin connection errors and 504 Gateway Timeout for origin timeouts.
-Requirements
-Python 3.10 or newer
-pip
-Installation
-Create and activate a virtual environment, then install the dependencies.
-Windows PowerShell
+# Caching HTTP Proxy
+
+A lightweight HTTP proxy built with **Python, FastAPI, and HTTPX**. It forwards incoming HTTP requests to a configured origin server and temporarily stores eligible `GET` responses in an in-memory cache.
+
+This project demonstrates backend concepts such as HTTP request forwarding, cache policies, TTL expiration, LRU eviction, and request/response header handling. It is intended for learning and local development, not as a production-ready or internet-facing proxy.
+
+## Features
+
+- Forwards `GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, and `OPTIONS` requests.
+- Caches eligible successful `GET` responses with status code `200`.
+- Uses an in-memory cache with TTL expiration and LRU eviction.
+- Supports response variants based on the `Vary` header.
+- Adds an `X-Cache` response header to indicate cache results.
+- Supports cache size limits and configurable request timeouts.
+- Provides health-check and protected cache-clear endpoints.
+- Avoids caching requests and responses that contain headers or directives that make caching unsafe.
+
+## Requirements
+
+- Python 3.10+
+- pip
+
+Dependencies are listed in `requirements.txt`:
+
+- FastAPI
+- HTTPX
+- Uvicorn
+
+## Installation
+
+Clone the repository and enter the project directory:
+
+```bash
+git clone https://github.com/AmirRezaiyan/caching_proxy_project.git
+cd caching_proxy_project
+```
+
+Create and activate a virtual environment.
+
+**Windows PowerShell**
+
+```powershell
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-pip install -r requirements.txt
-macOS / Linux
+```
+
+**macOS / Linux**
+
+```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install --upgrade pip
-pip install -r requirements.txt
-Run the proxy
-For example, to proxy requests to JSONPlaceholder on local port 8000:
-python main.py --port 8000 --origin https://jsonplaceholder.typicode.com
-The proxy listens on 127.0.0.1 by default. Open this URL in a browser or send a request with Postman or curl:
-http://127.0.0.1:8000/posts/1
-The request is forwarded to:
-https://jsonplaceholder.typicode.com/posts/1
-To bind to a different interface, pass --host. Do not expose the proxy to an untrusted network without adding appropriate access controls and deployment hardening.
-Check the cache
-Send the same GET request twice:
+```
+
+Install dependencies:
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+## Running the proxy
+
+The proxy requires an origin URL and a listening port.
+
+For example, to forward requests to JSONPlaceholder:
+
+```bash
+python main.py --host 127.0.0.1 --port 8000 --origin https://jsonplaceholder.typicode.com
+```
+
+The proxy will be available at:
+
+```text
+http://127.0.0.1:8000
+```
+
+You can now send requests to the proxy using the same paths exposed by the origin server.
+
+### Example request
+
+```bash
 curl -i http://127.0.0.1:8000/posts/1
-The first eligible request should include:
-X-Cache: MISS
-A subsequent request, before the entry expires, should include:
-X-Cache: HIT
-Requests that should not be cached return:
-X-Cache: BYPASS
-The cache stores data in process memory. Restarting the proxy clears the cache.
-Clear the cache while the proxy is running
-Start the proxy with an admin token. Use your own long, random token rather than the example below.
-Windows PowerShell
-$env:PROXY_ADMIN_TOKEN = "replace-this-with-a-long-random-token"
+```
+
+Send the same request again to check whether the response is served from the cache:
+
+```bash
+curl -i http://127.0.0.1:8000/posts/1
+```
+
+Check the `X-Cache` response header:
+
+- `X-Cache: MISS` — the response was not found in the cache and was fetched from the origin.
+- `X-Cache: HIT` — the cached response was returned.
+- `X-Cache: BYPASS` — the request or response was not eligible for caching.
+
+## Configuration
+
+The application accepts the following command-line arguments:
+
+| Argument | Description | Default |
+| --- | --- | --- |
+| `--host` | Host address on which the proxy listens. | `127.0.0.1` |
+| `--port` | Port on which the proxy listens. Required when starting the server. | Required |
+| `--origin` | Base URL of the upstream origin server. Required when starting the server. | Required |
+| `--ttl` | Default cache time-to-live in seconds. Must be a positive finite number. | `60` |
+| `--max-cache-entries` | Maximum number of cache entries. | `512` |
+| `--timeout` | Upstream request timeout in seconds. | `10` |
+| `--admin-token` | Token required by the cache-clear endpoint. Can also be set with `PROXY_ADMIN_TOKEN`. | Environment variable |
+
+Example with custom settings:
+
+```bash
+python main.py --host 0.0.0.0 --port 8000 --origin https://jsonplaceholder.typicode.com --ttl 120 --max-cache-entries 1000 --timeout 15
+```
+
+Only expose the proxy on a trusted network. Binding to `0.0.0.0` makes it reachable through the machine's network interfaces.
+
+## Cache behavior
+
+The proxy applies conservative caching rules.
+
+### Requests that bypass the cache
+
+Requests are not served from or stored in the cache when, for example:
+
+- The method is not `GET`.
+- The request contains a body.
+- The request contains `Authorization`, `Cookie`, or `Range`.
+- Conditional request headers are present.
+- The request includes `Cache-Control: no-store`.
+
+Requests with `Cache-Control: no-cache`, `max-age=0`, or `Pragma: no-cache` force a fetch from the origin rather than reusing a cached response.
+
+### Responses that are not cached
+
+A response is not stored when, for example:
+
+- Its status code is not `200`.
+- It contains `Set-Cookie`.
+- Its body exceeds 1 MiB.
+- Its cache directives include `no-store`, `private`, or `no-cache`.
+- Its `Vary` header is `*`.
+
+The proxy honors `s-maxage` or `max-age` response directives, subject to a maximum cache lifetime of 3600 seconds. Otherwise, it uses the configured default TTL.
+
+## Internal endpoints
+
+The proxy exposes two internal endpoints:
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `GET` | `/__proxy__/health` | Returns the proxy health status. |
+| `POST` | `/__proxy__/cache/clear` | Clears the in-memory cache. Requires the admin token. |
+
+### Clear the cache
+
+Start the proxy with an admin token:
+
+**Windows PowerShell**
+
+```powershell
+$env:PROXY_ADMIN_TOKEN = "change-this-token"
 python main.py --port 8000 --origin https://jsonplaceholder.typicode.com
-Open a second terminal, set the same token, and run:
-$env:PROXY_ADMIN_TOKEN = "replace-this-with-a-long-random-token"
-python main.py --port 8000 --clear-cache
-macOS / Linux
-export PROXY_ADMIN_TOKEN="replace-this-with-a-long-random-token"
+```
+
+**macOS / Linux**
+
+```bash
+export PROXY_ADMIN_TOKEN="change-this-token"
 python main.py --port 8000 --origin https://jsonplaceholder.typicode.com
-In a second terminal:
-export PROXY_ADMIN_TOKEN="replace-this-with-a-long-random-token"
-python main.py --port 8000 --clear-cache
-The clear-cache command sends an authenticated request to the running proxy. It does not attempt to clear a separate, newly created Python process's memory.
-Configuration
-Argument
-Default
-Description
---port
-Required
-Local port used by the proxy
---origin
-Required when starting
-Base URL of the origin server; supports an optional path prefix
---host
-127.0.0.1
-Network interface to bind
---ttl
-60
-Default cache lifetime in seconds
---max-cache-entries
-512
-Maximum number of cached response variants
---timeout
-10
-Origin request timeout in seconds
---admin-token
-PROXY_ADMIN_TOKEN
-Token required to clear a running proxy's cache
---clear-cache
-Off
-Clear the cache of a running proxy instead of starting it
-The maximum cache lifetime for an origin-provided max-age or s-maxage is capped at one hour. The maximum cacheable response body size is currently 1 MiB.
-Project structure
+```
+
+Send a cache-clear request with the matching token:
+
+```bash
+curl -X POST http://127.0.0.1:8000/__proxy__/cache/clear \
+  -H "X-Proxy-Admin-Token: change-this-token"
+```
+
+The command-line cache-clear mode can also be used against a running local proxy:
+
+```bash
+python main.py --port 8000 --clear-cache --admin-token "change-this-token"
+```
+
+When using `--clear-cache`, do not provide `--origin`.
+
+## Project structure
+
+```text
 caching_proxy_project/
-├── cache.py               # In-memory TTL cache with LRU eviction and Vary support
-├── main.py                # Command-line interface
-├── proxy_server.py        # FastAPI application and HTTP forwarding logic
-├── requirements.txt       # Runtime dependencies
-├── requirements-dev.txt   # Test dependencies
-├── tests/
-│   ├── test_cache.py
-│   └── test_proxy_helpers.py
-├── .gitignore
+├── cache.py          # In-memory cache, TTL expiration, and eviction
+├── main.py           # CLI arguments and application startup
+├── proxy_server.py   # Proxy routes and upstream request handling
+├── requirements.txt  # Runtime dependencies
 └── README.md
-Run tests
-Install development dependencies:
-pip install -r requirements-dev.txt
-Run the test suite:
-python -m pytest -q
-Current limitations
-The cache is in-memory and local to one process; it is cleared when the server restarts and is not shared across multiple workers.
-This project does not implement cache revalidation with ETag / If-Modified-Since, streaming uploads/downloads, WebSockets, or HTTPS tunneling via the CONNECT method.
-Request and response bodies are buffered in memory. Responses larger than 1 MiB are forwarded but are not stored in the cache.
-The proxy does not include production features such as user authentication, rate limiting, detailed metrics, or a hardened deployment configuration.
-The administrative cache-clear endpoint is disabled unless an admin token is configured.
-License
-No license is currently specified. Add a LICENSE file before allowing reuse or redistribution of this project.
+```
+
+## Technical notes and limitations
+
+- Cache data is stored in memory and is lost when the process stops.
+- The cache is local to the running application process; it is not shared across multiple workers or instances.
+- This project is not designed to replace a production reverse proxy or CDN.
+- Authentication, TLS termination, distributed caching, and production-grade operational controls are outside its current scope.
+
+## License
+
+No license file is currently included in this repository. Unless a license is added, the project should be treated as having no explicit open-source license.
