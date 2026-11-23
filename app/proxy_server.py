@@ -12,7 +12,7 @@ import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
-from cache import Cache
+from .cache import Cache
 
 logger = logging.getLogger("caching_proxy")
 

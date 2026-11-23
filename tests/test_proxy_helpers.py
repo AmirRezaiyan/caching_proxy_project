@@ -1,12 +1,12 @@
 import httpx
 from starlette.requests import Request
 
-from proxy_server import (
+from app.proxy_server import (
+    _request_forces_origin,
     _request_is_cacheable,
     _response_cache_policy,
     build_target_url,
 )
-
 
 def make_request(
     path: str = "/posts/1",
@@ -105,7 +105,6 @@ def test_absolute_looking_request_path_cannot_change_origin_host() -> None:
 
 
 def test_request_no_cache_forces_origin_and_no_store_disables_cache() -> None:
-    from proxy_server import _request_forces_origin
 
     no_cache = make_request(headers=[(b"cache-control", b"no-cache")])
     zero_age = make_request(headers=[(b"cache-control", b"max-age=0")])

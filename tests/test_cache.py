@@ -1,5 +1,4 @@
-from cache import Cache
-
+from app.cache import Cache
 
 class FakeClock:
     def __init__(self) -> None:
@@ -58,17 +57,22 @@ def test_cache_replaces_same_variant() -> None:
     assert len(cache) == 1
 
 
-def test_cache_evicts_oldest_key_when_capacity_is_reached() -> None:
+def test_cache_evicts_least_recently_used_key_when_capacity_is_reached() -> None:
     cache = Cache(max_entries=2)
+
     cache.set("first", 1)
     cache.set("second", 2)
+
+    # Make the first entry recently used.
+    assert cache.get("first") == 1
+
+    # This should evict the second entry.
     cache.set("third", 3)
 
-    assert cache.get("first") is None
-    assert cache.get("second") == 2
+    assert cache.get("first") == 1
+    assert cache.get("second") is None
     assert cache.get("third") == 3
     assert len(cache) == 2
-
 
 def test_clear_removes_all_entries() -> None:
     cache = Cache()

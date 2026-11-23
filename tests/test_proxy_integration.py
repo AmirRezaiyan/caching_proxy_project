@@ -2,8 +2,7 @@ import asyncio
 
 import httpx
 
-from proxy_server import create_app
-
+from app.proxy_server import create_app
 
 def run(coro):
     return asyncio.run(coro)

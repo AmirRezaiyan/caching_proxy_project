@@ -10,8 +10,7 @@ import sys
 
 import httpx
 
-from proxy_server import start_proxy_server
-
+from .proxy_server import start_proxy_server
 
 def positive_int(value: str) -> int:
     try:
